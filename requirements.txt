@@ -1,0 +1,10 @@
+gradio
+ccxt
+yfinance
+pyyaml
+httpx
+aiofiles
+numpy
+pandas
+rich
+supabase
