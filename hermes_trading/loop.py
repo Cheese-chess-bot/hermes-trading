@@ -3,6 +3,7 @@ import json
 import yaml
 import time
 from hermes_trading.adapters import price, onchain, news, macro
+from hermes_trading.db import supabase
 
 async def run_loop(asset, goal):
     print(f"Starting loop for {asset}")
@@ -16,17 +17,16 @@ async def run_loop(asset, goal):
                 macro.fetch(asset)
             )
             
-            # 2. Evaluate strategy (simplified)
-            # ... trade logic ...
+            # 2. Log outcome to Supabase
+            supabase.table("trades").insert({
+                "ts": time.time(),
+                "asset": asset,
+                "outcome": "paper_trade"
+            }).execute()
             
-            # 3. Log
-            with open("state/trades.jsonl", "a") as f:
-                f.write(json.dumps({"ts": time.time(), "asset": asset, "outcome": "paper_trade"}) + "\n")
+            # 3. Heartbeat
+            # (Supabase can be used to store heartbeats)
             
-            # 4. Heartbeat
-            with open("state/heartbeat.json", "w") as f:
-                json.dump({"ts": time.time(), "status": "ok"}, f)
-                
             await asyncio.sleep(60)
         except Exception as e:
             print(f"Error in loop: {e}")

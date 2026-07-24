@@ -2,19 +2,21 @@ import argparse
 import yaml
 import json
 import sys
+from hermes_trading.db import supabase
 
 def fallback_reflect():
     print("Running fallback reflection")
-    # ... logic to change ONE variable ...
-    with open("state/strategy.yaml", "r") as f:
-        strat = yaml.safe_load(f)
+    
+    # Fetch strategy from Supabase (assuming it's stored in a table 'settings')
+    response = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
+    strat = yaml.safe_load(response.data["value"])
     
     # Simple change for demo
     strat["version"] = str(int(strat["version"]) + 1).zfill(2)
     strat["entry"]["threshold"] += 2
     
-    with open("state/strategy.yaml", "w") as f:
-        yaml.dump(strat, f)
+    # Update strategy in Supabase
+    supabase.table("settings").update({"value": yaml.dump(strat)}).eq("key", "strategy").execute()
     
     print("Reflected.")
 
