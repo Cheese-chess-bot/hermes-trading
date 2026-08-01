@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from hermes_trading.db import supabase
 from hermes_trading.patterns import get_patterns
 
-# RSI helper
+# Pure Python RSI implementation
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1: return 50.0
     deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
@@ -19,15 +19,21 @@ def calculate_rsi(prices, period=14):
 
 def run_evolutionary_backtest(symbol="NVDA"):
     # Evolutionary settings
-    windows = {"1d": timedelta(days=1), "1w": timedelta(weeks=7)}
+    windows = {"1d": timedelta(days=1), "1w": timedelta(weeks=1)}
     
     response = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
     strat = yaml.safe_load(response.data["value"])
     
     for name, delta in windows.items():
         start_date = datetime.now() - delta
+        # Ensure symbol format is yfinance-friendly
         hist = yf.download(symbol, start=start_date, interval="1m", progress=False)
-        prices = hist['Close'].tolist()
+        
+        if hist.empty:
+            print(f"No data for {symbol}")
+            continue
+            
+        prices = hist['Close'].iloc[:, 0].tolist()
         
         for i in range(14, len(prices)):
             rsi = calculate_rsi(prices[:i])
