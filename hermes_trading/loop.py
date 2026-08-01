@@ -57,7 +57,7 @@ async def run_loop(asset, goal):
                     supabase.table("trades").insert({
                         "ts": time.time(),
                         "asset": asset,
-                        "outcome": f"buy_rsi_{rsi:.1f}_{pat_str}"
+                        "outcome": f"live_trade_{rsi:.1f}_{pat_str}"
                     }).execute()
                     print(f"Trade placed for {asset} based on RSI and Pattern")
                 
