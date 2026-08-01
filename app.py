@@ -53,29 +53,32 @@ def update_dashboard():
     # Plot PRICE on Y-axis
     fig = px.line(df, x='ts', y='price', title="NVDA Trading Activity")
     
+    # Make displays read-only
     return (
-        m["trades"], m["mode"], m["market"], m["status"], 
-        m["nyse_time"], m["strat"], m["profit"], 
-        m["drawdown"], m["win_rate"], m["sharpe"], fig
+        gr.update(value=m["trades"]), m["mode"], m["market"], m["status"], 
+        m["nyse_time"], m["strat"], gr.update(value=m["profit"]), 
+        gr.update(value=m["drawdown"]), gr.update(value=m["win_rate"]), 
+        gr.update(value=m["sharpe"]), fig
     )
 
-with gr.Blocks() as demo:
-    gr.Markdown("# Hermes Trading Dashboard")
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="blue")) as demo:
+    gr.Markdown("# Hermes Trading Dashboard", elem_id="header")
     
     with gr.Row():
-        trades_display = gr.Number(label="Trades executed")
-        mode_display = gr.Textbox(label="Mode")
-        market_display = gr.Textbox(label="Market")
-        status_display = gr.Textbox(label="Market status")
-        time_display = gr.Textbox(label="Time (NYSE)")
-        strat_display = gr.Textbox(label="Model strats version")
+        trades_display = gr.Number(label="Trades executed", interactive=False)
+        mode_display = gr.Textbox(label="Mode", interactive=False)
+        market_display = gr.Textbox(label="Market", interactive=False)
+        status_display = gr.Textbox(label="Market status", interactive=False)
+        time_display = gr.Textbox(label="Time (NYSE)", interactive=False)
+        strat_display = gr.Textbox(label="Model strats version", interactive=False)
         
     with gr.Row():
-        profit_display = gr.Number(label="Max Profit")
-        dd_display = gr.Number(label="Max Drawdown")
-        win_display = gr.Number(label="Win%")
-        loss_display = gr.Number(label="Loss%")
-        sharpe_display = gr.Number(label="Sharpe")
+        profit_display = gr.Number(label="Max Profit (Live)", interactive=False)
+        profit_paper_display = gr.Number(label="Max Profit (Paper)", interactive=False)
+        dd_display = gr.Number(label="Max Drawdown", interactive=False)
+        win_display = gr.Number(label="Win%", interactive=False)
+        loss_display = gr.Number(label="Loss%", interactive=False)
+        sharpe_display = gr.Number(label="Sharpe", interactive=False)
         
     chart_display = gr.Plot(label="NVDA IRL CHART")
     
