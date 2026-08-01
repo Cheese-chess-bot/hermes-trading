@@ -10,3 +10,4 @@ rich
 supabase
 alpaca-py
 pandas_market_calendars
+plotly
