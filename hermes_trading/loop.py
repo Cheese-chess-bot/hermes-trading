@@ -43,12 +43,18 @@ async def run_loop(asset, goal):
                 pat_str = " | ".join(patterns) if patterns else "Scanning"
                 print(f"Symbol: {asset} | Price: {current_price} | RSI: {rsi:.2f} | Patterns: {pat_str}")
 
-                # 3. Decision Logic (Only BUY if RSI < 30 and pattern exists)
+                # 3. Decision Logic
+                side = None
                 if rsi < 30 and patterns:
+                    side = "buy"
+                elif rsi > 70:
+                    side = "sell"
+                
+                if side:
                     payload = {
                         "symbol": asset.split('/')[0],
                         "qty": 1,
-                        "side": "buy",
+                        "side": side,
                         "type": "market",
                         "time_in_force": "gtc"
                     }
@@ -57,9 +63,9 @@ async def run_loop(asset, goal):
                     supabase.table("trades").insert({
                         "ts": time.time(),
                         "asset": asset,
-                        "outcome": f"live_trade_{rsi:.1f}_{pat_str}"
+                        "outcome": f"{side}_rsi_{rsi:.1f}_{pat_str}"
                     }).execute()
-                    print(f"Trade placed for {asset} based on RSI and Pattern")
+                    print(f"Trade placed for {asset}: {side}")
                 
                 await asyncio.sleep(60)
             except Exception as e:
