@@ -1,59 +1,65 @@
 import os
 import gradio as gr
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import yaml
 import datetime
 import pytz
+import yfinance as yf
 from hermes_trading.db import supabase
 from hermes_trading.clock import is_market_open
 
 def get_market_metrics():
     # Fetch live trades
     live_trades = supabase.table("trades").select("*").execute().data
-    # Fetch past evolution trades
-    past_trades = supabase.table("past_evol_trade").select("*").execute().data
     
-    # Strategy
-    strat_resp = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
-    strat = yaml.safe_load(strat_resp.data["value"]) if strat_resp.data else {}
-
-    # Metrics Calc (Placeholder logic for Sharpe/Drawdown if data is sparse)
-    trade_count = len(live_trades)
-    
+    # Calculate metrics
+    df = pd.DataFrame(live_trades)
+    if not df.empty:
+        # Simplified metrics for dashboard
+        profit = 0.0 # Placeholder
+        drawdown = 0.0
+        win_rate = 0.0
+        sharpe = 0.0
+    else:
+        profit, drawdown, win_rate, sharpe = 0.0, 0.0, 0.0, 0.0
+        
     # Basic Time
     nyse_tz = pytz.timezone('America/New_York')
     nyse_time = datetime.datetime.now(nyse_tz).strftime('%Y-%m-%d %H:%M:%S %Z')
     market_status = "Open" if is_market_open() else "Closed"
     
     return {
-        "trades": trade_count,
+        "trades": len(live_trades),
         "mode": "Real" if is_market_open() else "Past",
         "market": "NVDA",
         "status": market_status,
         "nyse_time": nyse_time,
-        "strat": strat.get("version", "01"),
-        "profit": 0.0,
-        "drawdown": 0.0,
-        "win_rate": 0.0,
-        "sharpe": 0.0
+        "strat": "01",
+        "profit": profit,
+        "drawdown": drawdown,
+        "win_rate": win_rate,
+        "sharpe": sharpe
     }
 
 def update_dashboard():
     m = get_market_metrics()
     
-    # Generate Plotly Chart
-    data = supabase.table("trades").select("ts, outcome").execute().data
-    df = pd.DataFrame(data)
+    # Fetch chart data
+    ticker = yf.Ticker("NVDA")
+    hist = ticker.history(period="1mo", interval="1d")
     
-    # Extract price from outcome string
-    df['price'] = df['outcome'].str.extract(r'price_(\d+\.\d+)').astype(float)
-    df['price'] = df['price'].fillna(0) # Fill for paper_trade or other logs
+    # Create Dual-Axis Plotly Chart
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Plot PRICE on Y-axis
-    fig = px.line(df, x='ts', y='price', title="NVDA Trading Activity")
+    # Add Price Line
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Price"), secondary_y=False)
+    # Add Volume Bar
+    fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], name="Volume", opacity=0.3), secondary_y=True)
     
-    # Make displays read-only
+    fig.update_layout(title="NVDA Price & Volume", template="plotly_dark")
+    
     return (
         gr.update(value=m["trades"]), m["mode"], m["market"], m["status"], 
         m["nyse_time"], m["strat"], gr.update(value=m["profit"]), 
@@ -61,8 +67,8 @@ def update_dashboard():
         gr.update(value=m["sharpe"]), fig
     )
 
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="blue")) as demo:
-    gr.Markdown("# Hermes Trading Dashboard", elem_id="header")
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
+    gr.Markdown("# Hermes Trading Dashboard")
     
     with gr.Row():
         trades_display = gr.Number(label="Trades executed", interactive=False)
