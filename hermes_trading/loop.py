@@ -43,11 +43,15 @@ async def run_loop(asset, goal):
                 pat_str = " | ".join(patterns) if patterns else "Scanning"
                 print(f"Symbol: {asset} | Price: {current_price} | RSI: {rsi:.2f} | Patterns: {pat_str}")
 
-                # 3. Decision Logic
+# 3. Decision Logic: Pull fresh params every iteration
+                response = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
+                strat = yaml.safe_load(response.data["value"])
+                threshold = strat["entry"]["threshold"]
+                
                 side = None
-                if rsi < 30 and patterns:
+                if rsi < threshold and patterns:
                     side = "buy"
-                elif rsi > 70:
+                elif rsi > (100 - threshold):
                     side = "sell"
                 
                 if side:
