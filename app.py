@@ -43,8 +43,15 @@ def update_dashboard():
     m = get_market_metrics()
     
     # Generate Plotly Chart
-    df = pd.DataFrame(supabase.table("trades").select("ts, outcome").execute().data)
-    fig = px.line(df, x='ts', y='outcome', title="NVDA Price Simulation")
+    data = supabase.table("trades").select("ts, outcome").execute().data
+    df = pd.DataFrame(data)
+    
+    # Extract price from outcome string
+    df['price'] = df['outcome'].str.extract(r'price_(\d+\.\d+)').astype(float)
+    df['price'] = df['price'].fillna(0) # Fill for paper_trade or other logs
+    
+    # Plot PRICE on Y-axis
+    fig = px.line(df, x='ts', y='price', title="NVDA Trading Activity")
     
     return (
         m["trades"], m["mode"], m["market"], m["status"], 
