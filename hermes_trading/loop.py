@@ -63,11 +63,11 @@ async def run_loop(asset, goal):
                     supabase.table("trades").insert({
                         "ts": time.time(),
                         "asset": asset,
-                        "outcome": f"{side}_rsi_{rsi:.1f}_{pat_str}"
+                        "outcome": f"live_trade_{side}_rsi_{rsi:.1f}_{pat_str}"
                     }).execute()
                     print(f"Trade placed for {asset}: {side}")
                 
-                await asyncio.sleep(60)
+                await asyncio.sleep(20) # 3x speedup
             except Exception as e:
                 print(f"Error in loop: {e}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(20)
