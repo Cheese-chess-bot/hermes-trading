@@ -53,6 +53,16 @@ def run_rl_evolution(symbol="NVDA"):
             else: losses += 1
             profits.append(log_ret)
             
+            # Log to past_evol_trade
+            try:
+                supabase.table("past_evol_trade").insert({
+                    "ts": time.time(),
+                    "asset": f"{symbol}/USDT",
+                    "outcome": f"evol_rsi_{rsi:.1f}_action_{action}"
+                }).execute()
+            except Exception as e:
+                print(f"DB Error (past_evol_trade): {e}")
+            
         ai.learn(state, action, reward, state)
         
     # Calculate metrics
