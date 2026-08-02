@@ -24,27 +24,18 @@ def get_regime(prices):
     return 1 if sma50 > sma200 else 0
 
 def run_rl_evolution(symbol="NVDA"):
-    # Load AI and Q-Table
     ai = QLearner()
-    try:
-        resp = supabase.table("ai_brain").select("q_table").eq("id", symbol).single().execute()
-        if resp.data and resp.data["q_table"]:
-            ai.q_table = resp.data["q_table"]
-            print(f"Loaded existing Q-Table with {len(ai.q_table)} states.")
-    except Exception as e:
-        print(f"Error loading Q-Table: {e}")
-
+    
     # Data
     hist = yf.download(symbol, start="2022-01-01", interval="1d", progress=False)
-    if hist.empty:
-        print("No historical data to train on.")
-        return
-        
     prices = hist['Close'].values.flatten().tolist()
     
-    trades_count = 0
-    print(f"Starting evolution training on {len(prices)} candles...")
-
+    # Metrics tracking
+    wins = 0
+    losses = 0
+    profits = []
+    
+    # Train
     for i in range(200, len(prices)):
         prices_subset = prices[:i]
         rsi = calculate_rsi(prices_subset)
@@ -55,33 +46,42 @@ def run_rl_evolution(symbol="NVDA"):
         state = ai.get_state(rsi, log_ret, bb_pos, regime)
         action = ai.choose_action(state)
         
-        # Reward
         reward = log_ret if action == 'buy' else (-log_ret if action == 'sell' else 0)
         
-        # Learn
-        next_state = ai.get_state(rsi, log_ret, bb_pos, regime)
-        ai.learn(state, action, reward, next_state)
+        if action == 'buy':
+            if log_ret > 0: wins += 1
+            else: losses += 1
+            profits.append(log_ret)
+            
+        ai.learn(state, action, reward, state)
         
-        # Log to past_evol_trade if specific trigger
-        if rsi < 30: # Trigger condition
-            try:
-                supabase.table("past_evol_trade").insert({
-                    "ts": time.time(),
-                    "asset": f"{symbol}/USDT",
-                    "outcome": f"evol_rsi_{rsi:.1f}_action_{action}"
-                }).execute()
-                trades_count += 1
-            except Exception as e:
-                print(f"DB Error: {e}")
-
-    print(f"Training complete. Trades logged: {trades_count}, Q-Table states: {len(ai.q_table)}")
+    # Calculate metrics
+    profit_pct = sum(profits) * 100
+    win_rate = (wins / (wins + losses)) if (wins + losses) > 0 else 0
+    max_dd = 0.0 # Simplified
     
-    # Save Brain
-    try:
-        supabase.table("ai_brain").upsert({"id": symbol, "q_table": ai.q_table}).execute()
-        print("Saved Q-Table to Supabase.")
-    except Exception as e:
-        print(f"Save Error: {e}")
+    # 1. Upsert Q-Values (Normalized)
+    supabase.table("q_values").delete().eq("asset", symbol).execute()
+    q_rows = []
+    for state, actions in ai.q_table.items():
+        for action, val in actions.items():
+            q_rows.append({"asset": symbol, "state": state, "action": action, "value": val})
+    
+    # Chunk insert to avoid limits
+    for i in range(0, len(q_rows), 500):
+        supabase.table("q_values").insert(q_rows[i:i+500]).execute()
+        
+    # 2. Log Daily Performance
+    supabase.table("daily_performance").insert({
+        "ts": time.time(),
+        "asset": f"{symbol}/USDT",
+        "profit_pct": profit_pct,
+        "max_drawdown": max_dd,
+        "win_rate": win_rate,
+        "loss_rate": 1 - win_rate
+    }).execute()
+
+    print(f"Evolution complete. Logged performance and normalized Q-Table.")
 
 if __name__ == "__main__":
     run_rl_evolution()
