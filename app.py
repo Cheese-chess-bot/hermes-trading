@@ -7,6 +7,7 @@ import yaml
 import datetime
 import pytz
 import yfinance as yf
+import subprocess
 from hermes_trading.db import supabase
 from hermes_trading.clock import is_market_open
 
@@ -14,24 +15,16 @@ def get_market_metrics():
     # Fetch live trades
     live_trades = supabase.table("trades").select("*").execute().data
     
-    # Calculate metrics
-    df = pd.DataFrame(live_trades)
-    if not df.empty:
-        # Simplified metrics for dashboard
-        profit = 0.0 # Placeholder
-        drawdown = 0.0
-        win_rate = 0.0
-        sharpe = 0.0
-    else:
-        profit, drawdown, win_rate, sharpe = 0.0, 0.0, 0.0, 0.0
+    # Calculate metrics (Simple placeholders for now)
+    trade_count = len(live_trades)
+    profit, drawdown, win_rate, sharpe = 0.0, 0.0, 0.0, 0.0
         
-    # Basic Time
     nyse_tz = pytz.timezone('America/New_York')
     nyse_time = datetime.datetime.now(nyse_tz).strftime('%Y-%m-%d %H:%M:%S %Z')
     market_status = "Open" if is_market_open() else "Closed"
     
     return {
-        "trades": len(live_trades),
+        "trades": trade_count,
         "mode": "Real" if is_market_open() else "Past",
         "market": "NVDA",
         "status": market_status,
@@ -42,6 +35,10 @@ def get_market_metrics():
         "win_rate": win_rate,
         "sharpe": sharpe
     }
+
+def force_evolve():
+    subprocess.Popen(["python", "-m", "hermes_trading.execution2"])
+    return "Evolution triggered!"
 
 def update_dashboard():
     m = get_market_metrics()
@@ -69,6 +66,12 @@ def update_dashboard():
 
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
     gr.Markdown("# Hermes Trading Dashboard")
+    
+    with gr.Row():
+        force_btn = gr.Button("Force Evolve Now")
+        force_status = gr.Textbox(label="Status", interactive=False)
+    
+    force_btn.click(force_evolve, outputs=[force_status])
     
     with gr.Row():
         trades_display = gr.Number(label="Trades executed", interactive=False)
