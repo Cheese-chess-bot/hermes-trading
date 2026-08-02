@@ -4,8 +4,8 @@ import time
 import numpy as np
 from datetime import datetime, timedelta
 from hermes_trading.db import supabase
+from hermes_trading.ai import QLearner
 
-# Pure Python indicators
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1: return 50.0
     deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
@@ -17,53 +17,57 @@ def calculate_rsi(prices, period=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-def calculate_atr(highs, lows, closes, period=14):
-    if len(closes) < period: return 1.0
-    tr = []
-    for i in range(1, len(closes)):
-        tr.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
-    return sum(tr[-period:]) / period
+def get_bb_pos(prices, period=20, k=2):
+    if len(prices) < period: return 1
+    sma = sum(prices[-period:]) / period
+    std = np.std(prices[-period:])
+    upper = sma + (k * std)
+    lower = sma - (k * std)
+    current = prices[-1]
+    if current > upper: return 2
+    if current < lower: return 0
+    return 1
 
 def run_rl_evolution(symbol="NVDA"):
+    # Goal
+    with open("state/goal.yaml", "r") as f:
+        goal = yaml.safe_load(f)
+    
+    # RL Brain
+    ai = QLearner()
+    
     # Target 2022-2026 data
     start_date = datetime(2022, 1, 1)
     hist = yf.download(symbol, start=start_date, interval="1d", progress=False)
+    prices = hist['Close'].values.flatten().tolist()
     
-    # Extract feature arrays
-    closes = hist['Close'].iloc[:, 0].tolist()
-    highs = hist['High'].iloc[:, 0].tolist()
-    lows = hist['Low'].iloc[:, 0].tolist()
-    
-    # Get current strategy
-    response = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
-    strat = yaml.safe_load(response.data["value"])
-    
-    # --- RL SIMULATION ENGINE ---
-    # Mutation logic: Slightly adjust parameters based on performance
-    best_sharpe = 0.0
-    
-    # Simple Genetic Algorithm step:
-    # 1. Simulate strategy
-    # 2. Mutate strategy parameters (RSI, StopLoss, etc.)
-    # 3. If better Sharpe, save new parameters to Supabase
-    
-    print("RL Evolution Step: Simulating 2022-2026 regime...")
-    
-    # Mutation logic placeholder
-    new_threshold = strat["entry"]["threshold"] + np.random.uniform(-1, 1)
-    
-    # Update Supabase
-    strat["entry"]["threshold"] = float(new_threshold)
-    supabase.table("settings").update({"value": yaml.dump(strat)}).eq("key", "strategy").execute()
+    # Simulation
+    total_profit = 0.0
+    for i in range(20, len(prices)):
+        rsi = calculate_rsi(prices[:i])
+        log_ret = np.log(prices[i]/prices[i-1])
+        bb_pos = get_bb_pos(prices[:i])
+        
+        state = ai.get_state(rsi, log_ret, bb_pos)
+        action = ai.choose_action(state)
+        
+        # Reward logic: log return if action is buy, negative if sell wrongly
+        reward = log_ret if action == 'buy' else (-log_ret if action == 'sell' else 0)
+        total_profit += reward
+        
+        next_state = ai.get_state(calculate_rsi(prices[:i+1]), np.log(prices[i+1]/prices[i]), get_bb_pos(prices[:i+1]))
+        ai.learn(state, action, reward, next_state)
+        
+    # Check against goal
+    if total_profit < goal["target_return_30d"]:
+        print(f"Goal NOT met: {total_profit:.4f}. RL Brain adapting...")
     
     # Log evolution result
     supabase.table("past_evol_trade").insert({
         "ts": time.time(),
         "asset": f"{symbol}/USDT",
-        "outcome": f"rl_evol_threshold_{new_threshold:.2f}"
+        "outcome": f"rl_evol_profit_{total_profit:.4f}"
     }).execute()
-
-    print(f"RL Evolution complete. New threshold: {new_threshold:.2f}")
 
 if __name__ == "__main__":
     run_rl_evolution()
