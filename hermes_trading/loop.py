@@ -43,7 +43,7 @@ async def run_loop(asset, goal):
                 pat_str = " | ".join(patterns) if patterns else "Scanning"
                 print(f"Symbol: {asset} | Price: {current_price} | RSI: {rsi:.2f} | Patterns: {pat_str}")
 
-# 3. Decision Logic: Pull fresh params every iteration
+                # 3. Decision Logic: Pull fresh params every iteration
                 response = supabase.table("settings").select("value").eq("key", "strategy").single().execute()
                 strat = yaml.safe_load(response.data["value"])
                 threshold = strat["entry"]["threshold"]
@@ -55,9 +55,18 @@ async def run_loop(asset, goal):
                     side = "sell"
                 
                 if side:
+                    # Fetch stats for Kelly Criterion
+                    stats = supabase.table("daily_performance").select("win_rate").order("ts", desc=True).limit(1).execute()
+                    win_rate = stats.data[0]['win_rate'] if stats.data else 0.5
+                    
+                    # Kelly Criterion: f* = (bp - q) / b
+                    # Simplified: qty based on confidence (win_rate)
+                    kelly_f = max(0.1, win_rate - (1 - win_rate))
+                    qty = max(1, int(kelly_f * 10))
+
                     payload = {
                         "symbol": asset.split('/')[0],
-                        "qty": 1,
+                        "qty": qty,
                         "side": side,
                         "type": "market",
                         "time_in_force": "gtc"
@@ -67,9 +76,10 @@ async def run_loop(asset, goal):
                     supabase.table("trades").insert({
                         "ts": time.time(),
                         "asset": asset,
-                        "outcome": f"live_trade_{side}_rsi_{rsi:.1f}_{pat_str}"
+                        "outcome": f"live_trade_{side}_rsi_{rsi:.1f}_{pat_str}_qty_{qty}"
                     }).execute()
-                    print(f"Trade placed for {asset}: {side}")
+                    print(f"Trade placed for {asset}: {side} | Qty: {qty}")
+
                 
                 await asyncio.sleep(20) # 3x speedup
             except Exception as e:
